@@ -36,7 +36,10 @@ export const saveAppState = (state: AppState) => {
           ...map,
           nodes: map.nodes.map(node => ({
             ...node,
-            data: { label: node.data.label } // Strip callbacks
+            data: { 
+              label: node.data.label,
+              color: node.data.color 
+            } // Strip callbacks
           }))
         }
       ])
