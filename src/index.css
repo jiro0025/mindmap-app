@@ -211,7 +211,7 @@ body {
 
 .node-toolbar {
   position: absolute;
-  top: -46px;
+  bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
