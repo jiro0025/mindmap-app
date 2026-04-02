@@ -1,145 +1,76 @@
-import { useState, useCallback, useEffect } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { useEffect } from 'react';
+// @ts-ignore
 import type { Node, Edge } from '@xyflow/react';
 
 import Sidebar from './components/Sidebar';
 import MindMapCanvas from './components/MindMapCanvas';
-import { loadAppState, saveAppState, exportToFile } from './utils/storage';
-import type { AppState, MapData } from './utils/storage';
-import type { MindMapNodeData } from './components/CustomNode';
+import AuthScreen from './components/AuthScreen';
+import { useAuth } from './hooks/useAuth';
+import { useMindMap } from './hooks/useMindMap';
 
 function App() {
-  const [appState, setAppState] = useState<AppState>(loadAppState);
+  const { user, loading: authLoading, loginWithGoogle, loginAnonymously, logout } = useAuth();
+  const { 
+    maps, 
+    currentMap, 
+    currentMapId, 
+    setCurrentMapId, 
+    createMap, 
+    saveMapData, 
+    updateMapName, 
+    deleteMap,
+    loading: mapsLoading
+  } = useMindMap(user?.uid);
 
-  // Auto-save app state whenever it changes
+  // 初回ログイン時にマップが一つもなければ作成
   useEffect(() => {
-    saveAppState(appState);
-  }, [appState]);
+    if (user && !mapsLoading && maps.length === 0) {
+      createMap('My First Mindmap');
+    }
+  }, [user, mapsLoading, maps.length]);
 
-  const activeMap = appState.maps[appState.activeMapId];
+  if (authLoading) {
+    return <div className="loading-screen">読み込み中...</div>;
+  }
 
-  const handleSelectMap = (id: string) => {
-    setAppState(prev => ({ ...prev, activeMapId: id }));
-  };
+  if (!user) {
+    return <AuthScreen onLoginGooglePrimary={loginWithGoogle} onLoginAnonymous={loginAnonymously} />;
+  }
 
-  const handleCreateMap = (name: string) => {
-    const newId = uuidv4();
-    const newMap: MapData = {
-      id: newId,
-      name,
-      nodes: [
-        {
-          id: 'root',
-          type: 'mindmapNode',
-          position: { x: 0, y: 0 },
-          data: { label: 'Central Idea' },
-        },
-      ],
-      edges: [],
-      lastModified: Date.now(),
-    };
-    
-    setAppState(prev => ({
-      ...prev,
-      activeMapId: newId,
-      maps: { ...prev.maps, [newId]: newMap }
-    }));
-  };
-
-  const handleDeleteMap = (id: string) => {
-    setAppState(prev => {
-      const newMaps = { ...prev.maps };
-      delete newMaps[id];
-      const remainingIds = Object.keys(newMaps);
-      const newActiveId = remainingIds[0];
-      return {
-        ...prev,
-        activeMapId: newActiveId,
-        maps: newMaps
-      };
-    });
-  };
-
-  const handleRenameMap = (id: string, newName: string) => {
-    setAppState(prev => ({
-      ...prev,
-      maps: {
-        ...prev.maps,
-        [id]: { ...prev.maps[id], name: newName, lastModified: Date.now() }
-      }
-    }));
-  };
-
-  const handleSaveMap = useCallback((nodes: Node<MindMapNodeData>[], edges: Edge[]) => {
-    setAppState(prev => {
-      const currentMap = prev.maps[prev.activeMapId];
-      // Only update if actually different to prevent infinite loops
-      // Simple check: compare timestamps or just let React handle it
-      return {
-        ...prev,
-        maps: {
-          ...prev.maps,
-          [prev.activeMapId]: {
-            ...currentMap,
-            nodes,
-            edges,
-            lastModified: Date.now()
-          }
-        }
-      };
-    });
-  }, []);
-
-  const handleExportMap = (id: string) => {
-    exportToFile(appState.maps[id]);
-  };
-
-  const handleImportMap = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const importedMap = JSON.parse(e.target?.result as string) as MapData;
-        const newId = uuidv4(); // Generate new ID to avoid collisions
-        const newMap: MapData = {
-          ...importedMap,
-          id: newId,
-          lastModified: Date.now()
-        };
-        
-        setAppState(prev => ({
-          ...prev,
-          activeMapId: newId,
-          maps: { ...prev.maps, [newId]: newMap }
-        }));
-      } catch (err) {
-        alert("Failed to import map: Invalid JSON file.");
-      }
-    };
-    reader.readAsText(file);
+  const handleSaveMap = (nodes: Node[], edges: Edge[]) => {
+    if (currentMapId) {
+      saveMapData(currentMapId, nodes, edges);
+    }
   };
 
   return (
-    <div className="app-layout" style={{ width: '100vw', height: '100vh', display: 'flex' }}>
+    <div className="app-layout">
       <Sidebar
-        maps={appState.maps}
-        activeMapId={appState.activeMapId}
-        onSelectMap={handleSelectMap}
-        onCreateMap={handleCreateMap}
-        onDeleteMap={handleDeleteMap}
-        onRenameMap={handleRenameMap}
-        onExportMap={handleExportMap}
-        onImportMap={handleImportMap}
+        maps={Object.fromEntries(maps.map(m => [m.id, m]))}
+        activeMapId={currentMapId || ''}
+        onSelectMap={setCurrentMapId}
+        onCreateMap={createMap}
+        onDeleteMap={deleteMap}
+        onRenameMap={updateMapName}
+        onExportMap={() => alert('Export is currently in cloud-only mode')}
+        onImportMap={() => alert('Import will be added in next update')}
+        onLogout={logout}
       />
       <main className="main-container">
         <header className="app-header">
-          <h1>{activeMap?.name}</h1>
+          <div className="header-content">
+            <h1>{currentMap?.name || 'Loading...'}</h1>
+            <div className="user-info">
+              <span>{user.isAnonymous ? 'Guest' : user.email}</span>
+            </div>
+          </div>
         </header>
-        {activeMap && (
+        {currentMap && (
           <MindMapCanvas 
-            key={activeMap.id} // Important for component reset
-            activeMapId={activeMap.id}
-            initialNodes={activeMap.nodes}
-            initialEdges={activeMap.edges}
+            key={currentMap.id}
+            activeMapId={currentMap.id}
+            initialNodes={currentMap.nodes}
+            initialEdges={currentMap.edges}
             onSave={handleSaveMap}
           />
         )}

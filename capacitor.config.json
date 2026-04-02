@@ -1,0 +1,8 @@
+{
+  "appId": "com.yourdomain.mindscape",
+  "appName": "Mindscape",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
